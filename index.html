@@ -14,7 +14,7 @@
         #total-score { position: absolute; bottom: 20px; right: 20px; color: #fff; font-size: 24px; font-weight: bold; text-align: right; z-index: 5; text-shadow: 2px 2px #000; display: none; }
         #total-score span { color: #0f0; font-size: 32px; display: block; }
         #drift-display { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); text-align: center; z-index: 10; pointer-events: none; display: none; }
-        #drift-msg { color: #fff; font-size: 40px; font-weight: 900; font-style: italic; text-shadow: 0 0 10px #f0f, 0 0 20px #f0f; display: block; }
+        #drift-msg { color: #fff; font-size: 40px; font-weight: 900; font-style: italic; text-shadow: 0 0 10px #f0f, 0 0 20px #f0f; display: block; transition: transform 0.1s ease-out; }
         #drift-pts { color: #0f0; font-size: 50px; font-weight: bold; text-shadow: 2px 2px #000; }
         
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
@@ -293,12 +293,9 @@
         const loader = new THREE.TextureLoader(); loader.crossOrigin = "anonymous";
         const carModel = new THREE.Group();
         
-        // Cuerpo principal
         const mainBody = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 3), bodyMat);
         mainBody.position.y = 0.4; carModel.add(mainBody);
 
-        // --- NOVEDAD: CAPÓ CERRADO ---
-        // Este bloque añade la pieza delante de la pantalla/volante
         const hood = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.2, 0.8), bodyMat);
         hood.position.set(0, 0.65, -0.8); carModel.add(hood);
         
@@ -323,7 +320,6 @@
         const rw = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 0.6), bodyMat);
         rw.position.set(0, 0.9, 1.4); carModel.add(rw);
 
-        // Volante y Pantalla
         const sw = new THREE.Group();
         const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 64;
         const tt = new THREE.CanvasTexture(canvas);
@@ -451,16 +447,49 @@
                 if(steeringWheel) steeringWheel.rotation.z = wheelLerp;
                 let driftActive = (keys['ShiftLeft'] || keys['ShiftRight']);
                 moveAngle = THREE.MathUtils.lerp(moveAngle, angle, driftActive ? 0.015 : 0.15);
+                
+                // --- LÓGICA DE DRIFT MEJORADA ---
                 if (speed * 110 > 30 && driftActive && Math.abs(angle - moveAngle) > 0.05) {
                     smokeParticles.push(new DriftParticle(car.position.x, 0, car.position.z));
-                    driftTimer++; currentDriftPoints += Math.floor(10 * (driftTimer / 30));
+                    driftTimer++;
+                    currentDriftPoints += Math.floor(10 * (driftTimer / 30));
+                    
+                    const msg = document.getElementById('drift-msg');
                     document.getElementById('drift-display').style.display = 'block';
+                    
+                    // Aumentar tamaño progresivamente
+                    let scale = 1 + (driftTimer / 120);
+                    msg.style.transform = `scale(${scale})`;
+
+                    // Cambiar mensajes según puntos
+                    if (currentDriftPoints > 5000) {
+                        msg.innerText = "¡NIVEL ALONSO 33!";
+                        msg.style.color = "#00ff00"; // Verde
+                        msg.style.textShadow = "0 0 20px #00ff00";
+                    } else if (currentDriftPoints > 2000) {
+                        msg.innerText = "¡ESPECTACULAR!";
+                        msg.style.color = "#fff";
+                        msg.style.textShadow = "0 0 10px #f0f";
+                    } else {
+                        msg.innerText = "¡MUY BIEN!";
+                        msg.style.color = "#fff";
+                        msg.style.textShadow = "0 0 10px #f0f";
+                    }
+
                     document.getElementById('drift-pts').innerText = `+${currentDriftPoints} PTS`;
                 } else if (currentDriftPoints > 0) {
-                    totalScore += currentDriftPoints; document.getElementById('totalPtsVal').innerText = totalScore;
-                    currentDriftPoints = 0; driftTimer = 0;
-                    setTimeout(() => { document.getElementById('drift-display').style.display = 'none'; }, 800);
+                    totalScore += currentDriftPoints;
+                    document.getElementById('totalPtsVal').innerText = totalScore;
+                    currentDriftPoints = 0;
+                    driftTimer = 0;
+                    setTimeout(() => { 
+                        if(currentDriftPoints === 0) {
+                            document.getElementById('drift-display').style.display = 'none';
+                            document.getElementById('drift-msg').style.transform = "scale(1)";
+                        }
+                    }, 800);
                 }
+                
                 let nx = car.position.x + Math.sin(moveAngle) * speed;
                 let nz = car.position.z + Math.cos(moveAngle) * speed;
                 if (getDistanceFromTrackCenter(nx, nz) <= 38) { car.position.x = nx; car.position.z = nz; } else speed *= 0.6;
