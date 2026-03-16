@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>FORMULA 25 - Lush Grass Edition</title>
+    <title>MINI FORMULA 25 🏎️- Grand Prix</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
         #hud { position: absolute; top: 20px; left: 20px; color: #ff0; font-size: 30px; font-weight: bold; z-index: 5; text-shadow: 2px 2px #000; display: none; }
@@ -16,14 +16,18 @@
         #drift-display { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); text-align: center; z-index: 10; pointer-events: none; display: none; }
         #drift-msg { color: #fff; font-size: 40px; font-weight: 900; font-style: italic; text-shadow: 0 0 10px #f0f, 0 0 20px #f0f; display: block; }
         #drift-pts { color: #0f0; font-size: 50px; font-weight: bold; text-shadow: 2px 2px #000; }
-        #menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 15; color: white; text-align: center; }
+        
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
+        #menu { background: rgba(0,0,0,0.6); z-index: 15; }
         #car-name { font-size: 24px; color: #ff0; margin: 20px 0; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
-        .controls { display: flex; gap: 20px; align-items: center; margin-bottom: 20px; }
+        .btn-start, .btn-retry { background: #e10600; color: white; border: none; padding: 20px 60px; font-size: 24px; cursor: pointer; font-weight: bold; clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%); transition: 0.3s; margin-top: 20px; }
         .btn-sel { background: #444; color: white; border: none; padding: 10px 20px; cursor: pointer; font-size: 18px; border-radius: 5px; }
-        .btn-start { background: #e10600; color: white; border: none; padding: 20px 60px; font-size: 24px; cursor: pointer; font-weight: bold; clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%); transition: 0.3s; }
         .mode-selector { margin-bottom: 25px; display: flex; gap: 10px; }
-        .btn-mode { background: #222; color: #aaa; border: 2px solid #444; padding: 8px 15px; cursor: pointer; border-radius: 4px; transition: 0.3s; }
+        .btn-mode { background: #222; color: #aaa; border: 2px solid #444; padding: 8px 15px; cursor: pointer; border-radius: 4px; }
         .btn-mode.active { border-color: #0f0; color: #fff; background: #111; }
+        
+        #victory-screen, #defeat-screen { display: none; }
+        .trophy { font-size: 100px; margin-bottom: 20px; filter: drop-shadow(0 0 20px gold); }
         #countdown { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 150px; font-weight: 900; font-style: italic; z-index: 20; text-shadow: 0 0 20px #ff0000; display: none; pointer-events: none; }
     </style>
 </head>
@@ -34,12 +38,13 @@
 <div id="lap-counter">VUELTA <span id="currentLap">1</span></div>
 <div id="leaderboard"></div>
 <div id="total-score">TOTAL PUNTOS<span id="totalPtsVal">0</span></div>
+
 <div id="drift-display">
     <span id="drift-msg">¡¡MUY BIEN!!</span>
     <span id="drift-pts">+0 PTS</span>
 </div>
 
-<div id="menu">
+<div id="menu" class="overlay">
     <h1 style="font-style: italic; letter-spacing: 5px; margin: 0;">FORMULA 25</h1>
     <div id="car-name">ASTON MARTIN #33</div>
     <div class="mode-selector">
@@ -51,7 +56,19 @@
         <button class="btn-start" onclick="start()">¡CORRER!</button>
         <button class="btn-sel" onclick="changeCar(1)">SIGUIENTE</button>
     </div>
-    <p style="font-size: 14px; color: #ccc;">WASD/Flechas | Shift: Derrape | C: Cámara</p>
+</div>
+
+<div id="victory-screen" class="overlay">
+    <div class="trophy">🏆</div>
+    <h1 style="font-size: 60px; color: #ff0;">¡VICTORIA!</h1>
+    <p id="vic-pos" style="font-size: 24px;">Has terminado en 1ª posición</p>
+    <button class="btn-retry" onclick="resetToMenu()">VOLVER AL MENÚ</button>
+</div>
+
+<div id="defeat-screen" class="overlay">
+    <h1 style="font-size: 60px; color: #e10600;">FIN DE CARRERA</h1>
+    <p id="def-pos" style="font-size: 24px;">Has terminado en 4ª posición</p>
+    <button class="btn-retry" onclick="resetToMenu()">REINTENTAR</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -60,7 +77,7 @@
     let isRacing = false, canMove = false, speed = 0, angle = 0, moveAngle = 0, wheelLerp = 0;
     let cameraMode = 'third', smokeParticles = [];
     let currentDriftPoints = 0, totalScore = 0, driftTimer = 0;
-    let trackCurve, currentLap = 1, lastLapPoint = 0, playerProgress = 0;
+    let trackCurve, currentLap = 1, lastLapPoint = 0, playerProgress = 0, playerFinalPos = 1;
     const keys = {};
 
     let gameMode = 'entreno';
@@ -69,13 +86,15 @@
     const proxy = (url) => `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
     const mercedesLogo = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Mercedes-Logo.svg/960px-Mercedes-Logo.svg.png";
     const ferrariLogo = "https://brandlogos.net/wp-content/uploads/2015/01/scuderia_ferrari-logo_brandlogos.net_bcr1l.png";
+    const rbLogo = "https://upload.wikimedia.org/wikipedia/en/thumb/f/f9/Red_Bull_Racing_logo.svg/1200px-Red_Bull_Racing_logo.svg.png";
+    const mclLogo = "https://upload.wikimedia.org/wikipedia/en/thumb/6/66/McLaren_Racing_logo.svg/1200px-McLaren_Racing_logo.svg.png";
     const newGrassImg = "https://static.vecteezy.com/system/resources/thumbnails/047/920/696/small/green-grass-isolated-on-a-transparent-background-free-png.png";
 
     const teams = [
         { name: "ASTON MARTIN #33", color: 0x006f62, num: "33", alonso: true, logo: mercedesLogo },
-        { name: "RED BULL RACING #1", color: 0x0600ef, num: "1", logo: "https://upload.wikimedia.org/wikipedia/en/thumb/f/f9/Red_Bull_Racing_logo.svg/1200px-Red_Bull_Racing_logo.svg.png" },
+        { name: "RED BULL RACING #1", color: 0x0600ef, num: "1", logo: rbLogo },
         { name: "FERRARI HP #16", color: 0xef1a2d, num: "16", logo: ferrariLogo },
-        { name: "MCLAREN F1 #4", color: 0xff8000, num: "4", logo: "https://upload.wikimedia.org/wikipedia/en/thumb/6/66/McLaren_Racing_logo.svg/1200px-McLaren_Racing_logo.svg.png" },
+        { name: "MCLAREN F1 #4", color: 0xff8000, num: "4", logo: mclLogo },
         { name: "MERCEDES AMG #44", color: 0x27f4d2, num: "44", logo: mercedesLogo }
     ];
     let currentTeamIndex = 0;
@@ -158,14 +177,6 @@
         trackMesh.scale.set(1, 0.001, 1); trackMesh.position.y = 0.05;
         scene.add(trackMesh);
 
-        const wallGeo = new THREE.TubeGeometry(trackCurve, 150, 0.5, 8, true);
-        const metalMat = new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 0.9, roughness: 0.2 });
-        const wallOut = new THREE.Mesh(wallGeo, metalMat); wallOut.scale.set(1.2, 1.2, 1.2); wallOut.position.y = 0.5;
-        scene.add(wallOut);
-        const wallIn = new THREE.Mesh(wallGeo, metalMat); wallIn.scale.set(0.8, 1.2, 0.8); wallIn.position.y = 0.5;
-        scene.add(wallIn);
-
-        // CORRECCIÓN ROTACIÓN META
         const checkerTex = new THREE.CanvasTexture(generateCheckerCanvas());
         checkerTex.wrapS = checkerTex.wrapT = THREE.RepeatWrapping; 
         checkerTex.repeat.set(12, 1); 
@@ -176,7 +187,6 @@
         groundLine.position.copy(finishPoint); 
         groundLine.position.y = 0.08; 
         groundLine.rotation.x = -Math.PI / 2;
-        // Rotación corregida: Apuntar perpendicularmente a la dirección de la pista
         groundLine.rotation.z = Math.atan2(tangent.x, tangent.z); 
         scene.add(groundLine);
     }
@@ -185,12 +195,7 @@
         const finishPoint = trackCurve.getPoint(0);
         const tangent = trackCurve.getTangent(0).normalize();
         const archGeo = new THREE.TorusGeometry(30, 2.5, 16, 100, Math.PI);
-        const archMat = new THREE.MeshStandardMaterial({ 
-            color: 0xe10600, 
-            metalness: 0.5, 
-            roughness: 0.3,
-            emissive: 0x440000
-        });
+        const archMat = new THREE.MeshStandardMaterial({ color: 0xe10600, metalness: 0.5 });
         const arch = new THREE.Mesh(archGeo, archMat);
         arch.position.copy(finishPoint);
         arch.position.y = -2; 
@@ -202,10 +207,6 @@
         const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512;
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#222'; ctx.fillRect(0, 0, 512, 512);
-        for(let i=0; i<3000; i++) {
-            ctx.fillStyle = `rgba(255,255,255,${Math.random()*0.07})`;
-            ctx.fillRect(Math.random()*512, Math.random()*512, 1, 1);
-        }
         ctx.strokeStyle = '#fff'; ctx.setLineDash([40, 40]); ctx.lineWidth = 15;
         ctx.beginPath(); ctx.moveTo(40, 0); ctx.lineTo(40, 512); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(472, 0); ctx.lineTo(472, 512); ctx.stroke();
@@ -250,8 +251,7 @@
                 const plant = new THREE.Mesh(grassGeo, grassMat);
                 const s = 0.8 + Math.random() * 0.7;
                 plant.scale.set(s, s, s);
-                plant.position.set(rx, 1.2 * s, rz); 
-                plant.rotation.y = Math.random() * Math.PI;
+                plant.position.set(rx, 1.2 * s, rz); plant.rotation.y = Math.random() * Math.PI;
                 scene.add(plant);
             }
         }
@@ -259,29 +259,24 @@
 
     function populateBushes() {
         const bushGeo = new THREE.SphereGeometry(3, 8, 8);
-        const bushMat = new THREE.MeshStandardMaterial({ color: 0x1a4a16, roughness: 1 });
+        const bushMat = new THREE.MeshStandardMaterial({ color: 0x1a4a16 });
         for (let i = 0; i < 150; i++) {
             const rx = (Math.random() - 0.5) * 2000, rz = (Math.random() - 0.5) * 2000;
             if (getDistanceFromTrackCenter(rx, rz) > 35) {
                 const bush = new THREE.Mesh(bushGeo, bushMat);
-                bush.scale.set(1, 0.6 + Math.random() * 0.5, 1);
-                bush.position.set(rx, 1, rz);
-                scene.add(bush);
+                bush.position.set(rx, 1, rz); scene.add(bush);
             }
         }
     }
 
     function populateRocks() {
         const rockGeo = new THREE.DodecahedronGeometry(2, 0);
-        const rockMat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.8 });
+        const rockMat = new THREE.MeshStandardMaterial({ color: 0x777777 });
         for (let i = 0; i < 100; i++) {
             const rx = (Math.random() - 0.5) * 2000, rz = (Math.random() - 0.5) * 2000;
             if (getDistanceFromTrackCenter(rx, rz) > 38) {
                 const rock = new THREE.Mesh(rockGeo, rockMat);
-                rock.scale.set(1 + Math.random() * 2, 0.5 + Math.random(), 1 + Math.random() * 2);
-                rock.rotation.set(Math.random(), Math.random(), Math.random());
-                rock.position.set(rx, 0.5, rz);
-                scene.add(rock);
+                rock.position.set(rx, 0.5, rz); scene.add(rock);
             }
         }
     }
@@ -289,7 +284,6 @@
     function createCar() {
         if (car) scene.remove(car);
         car = createGenericCar(teams[currentTeamIndex]); 
-        car.position.set(0, 0, 0); 
         scene.add(car);
     }
 
@@ -298,8 +292,16 @@
         const bodyMat = new THREE.MeshStandardMaterial({color: team.color, metalness: 0.5, roughness: 0.2});
         const loader = new THREE.TextureLoader(); loader.crossOrigin = "anonymous";
         const carModel = new THREE.Group();
+        
+        // Cuerpo principal
         const mainBody = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 3), bodyMat);
         mainBody.position.y = 0.4; carModel.add(mainBody);
+
+        // --- NOVEDAD: CAPÓ CERRADO ---
+        // Este bloque añade la pieza delante de la pantalla/volante
+        const hood = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.2, 0.8), bodyMat);
+        hood.position.set(0, 0.65, -0.8); carModel.add(hood);
+        
         const nCanvas = document.createElement('canvas'); nCanvas.width = 128; nCanvas.height = 128;
         const nCtx = nCanvas.getContext('2d');
         nCtx.fillStyle = "white"; nCtx.font = "bold 80px Arial"; nCtx.textAlign = "center"; nCtx.fillText(team.num, 64, 90);
@@ -307,20 +309,21 @@
         const numMat = new THREE.MeshBasicMaterial({ map: numTex, transparent: true });
         const leftPlate = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), numMat);
         leftPlate.position.set(-0.61, 0.5, 0.8); leftPlate.rotation.y = -Math.PI/2; carModel.add(leftPlate);
-        const rightPlateNum = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), numMat);
-        rightPlateNum.position.set(0.61, 0.5, 0.8); rightPlateNum.rotation.y = Math.PI/2; carModel.add(rightPlateNum);
+
         if (team.alonso) {
             const alonsoMat = new THREE.MeshBasicMaterial({ map: loader.load(proxy("https://objetos-xlk.estaticos-marca.com/uploads/2025/02/18/67b4ba31ab8f2.jpeg")) });
             const alonsoPlate = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), alonsoMat);
             alonsoPlate.position.set(0.61, 0.45, 0); alonsoPlate.rotation.y = Math.PI/2; carModel.add(alonsoPlate);
         }
+
         const logoMat = new THREE.MeshBasicMaterial({ map: loader.load(proxy(team.logo)), transparent: true });
         const frontLogo = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.4), logoMat);
         frontLogo.position.set(0, 0.35, -1.51); frontLogo.rotation.y = Math.PI; carModel.add(frontLogo);
+        
         const rw = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 0.6), bodyMat);
         rw.position.set(0, 0.9, 1.4); carModel.add(rw);
-        const nose = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.5), bodyMat);
-        nose.position.set(0, 0.2, -1.5); carModel.add(nose);
+
+        // Volante y Pantalla
         const sw = new THREE.Group();
         const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 64;
         const tt = new THREE.CanvasTexture(canvas);
@@ -328,6 +331,7 @@
         screen.position.z = 0.03; sw.add(screen);
         sw.position.set(0, 0.75, -0.4); carModel.add(sw);
         if(team === teams[currentTeamIndex]) { steeringWheel = sw; telemetryTexture = tt; }
+
         [[ -0.75, 0.4, 1.1], [0.75, 0.4, 1.1], [-0.75, 0.4, -1.1], [0.75, 0.4, -1.1]].forEach(p => {
             const w = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.4, 24), new THREE.MeshStandardMaterial({color: 0x111111}));
             w.rotation.z = Math.PI/2; w.position.set(...p); carModel.add(w);
@@ -353,7 +357,7 @@
         teams.forEach((t, index) => {
             if (index !== currentTeamIndex && count < 4) {
                 const oMesh = createGenericCar(t); scene.add(oMesh);
-                const slowSpeeds = [0.0004, 0.0005, 0.00035, 0.00045];
+                const slowSpeeds = [0.00045, 0.00048, 0.00043, 0.00046];
                 const gridPositions = [{ p: -0.015, side: -8 }, { p: -0.030, side: 8 }, { p: -0.045, side: -8 }, { p: -0.060, side: 8 }];
                 opponents.push({ name: t.name.split('#')[0], mesh: oMesh, progress: gridPositions[count].p, speed: slowSpeeds[count], offset: gridPositions[count].side, lap: 1 });
                 count++;
@@ -364,6 +368,7 @@
     function start() {
         document.getElementById('menu').style.display = 'none';
         isRacing = true; canMove = false; speed = 0; currentLap = 1; playerProgress = 0;
+        document.getElementById('currentLap').innerText = "1 / " + (gameMode === 'competicion' ? '4' : '∞');
         const startPoint = trackCurve.getPoint(0), tangent = trackCurve.getTangent(0);
         const normal = new THREE.Vector3(tangent.z, 0, -tangent.x).normalize();
         car.position.copy(startPoint).add(normal.multiplyScalar(8));
@@ -403,7 +408,29 @@
         racers.sort((a, b) => b.score - a.score);
         const lb = document.getElementById('leaderboard');
         lb.innerHTML = '<div style="font-weight:bold; color:#e10600; margin-bottom:5px; border-bottom:2px solid #e10600;">POSICIONES</div>';
-        racers.forEach((r, i) => { lb.innerHTML += `<div class="pos-item ${r.isPlayer?'pos-player':''}">${i+1}. ${r.name}</div>`; });
+        racers.forEach((r, i) => { 
+            lb.innerHTML += `<div class="pos-item ${r.isPlayer?'pos-player':''}">${i+1}. ${r.name}</div>`; 
+            if(r.isPlayer) playerFinalPos = i + 1;
+        });
+    }
+
+    function endRace() {
+        canMove = false; isRacing = false;
+        document.getElementById('hud').style.display = 'none';
+        document.getElementById('leaderboard').style.display = 'none';
+        document.getElementById('lap-counter').style.display = 'none';
+        if(playerFinalPos === 1) document.getElementById('victory-screen').style.display = 'flex';
+        else {
+            document.getElementById('defeat-screen').style.display = 'flex';
+            document.getElementById('def-pos').innerText = `Has terminado en ${playerFinalPos}ª posición`;
+        }
+    }
+
+    function resetToMenu() {
+        document.getElementById('victory-screen').style.display = 'none';
+        document.getElementById('defeat-screen').style.display = 'none';
+        document.getElementById('menu').style.display = 'flex';
+        speed = 0;
     }
 
     function loop() {
@@ -453,7 +480,10 @@
                 let p = trackCurve.getPoint(i); let d = car.position.distanceTo(p);
                 if(d < minD) { minD = d; playerProgress = i; }
             }
-            if (playerProgress < 0.1 && lastLapPoint > 0.9) { currentLap++; document.getElementById('currentLap').innerText = currentLap; }
+            if (playerProgress < 0.1 && lastLapPoint > 0.9) { 
+                if(gameMode === 'competicion' && currentLap >= 4) endRace();
+                else { currentLap++; document.getElementById('currentLap').innerText = currentLap + " / " + (gameMode === 'competicion' ? '4' : '∞'); }
+            }
             lastLapPoint = playerProgress; updateLeaderboard();
             if (cameraMode === 'first') {
                 const cockpit = new THREE.Vector3(0, 1.1, -0.4).applyQuaternion(car.quaternion);
